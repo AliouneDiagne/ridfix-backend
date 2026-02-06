@@ -13,14 +13,15 @@
 
 * **Java 21 & Spring Boot 3.4.2**: For a reactive and modern backend.
 * **PostgreSQL**: Relational database for structured data integrity.
-* **Hibernate/JPA**: Implementing a **10-table schema** with advanced inheritance.
+* **Hibernate/JPA**: Implementing a **12-table schema** with advanced inheritance.
 
 ### 🏛️ Design Patterns
 
-* **Inheritance Strategy**: Used `SINGLE_TABLE` for the `Product` entity (SparePart vs. Accessory) to optimize query performance.
 * **DTO Pattern**: Full separation between Database Entities and API Responses for maximum security.
-* **RBAC (Role-Based Access Control)**: 3 levels of security (`CUSTOMER`, `STAFF`, `ADMIN`).
+* **RBAC (Role-Based Access Control)**: 3 levels of security (`CUSTOMER`, `STAFF`, `ADMIN`). 
 
+
+* **Inheritance Strategy**: Used JOINED inheritance strategy for the Product entity. This ensures a normalized database schema where SparePart and Accessory specific attributes are stored in separate tables, ensuring data integrity while maintaining a unified catalog interface.
 ---
 
 ## 📂 Project Directory Structure
@@ -44,7 +45,7 @@ backend/
 
 ## 🚀 Key Business Features
 
-* **🛒 Transactional Checkout**: Uses `@Transactional` and **Optimistic Locking** to ensure that product stock is never inconsistent, even during high traffic.
+* **🛒 Transactional Checkout**: Uses @Transactional and **Pessimistic Locking** (SELECT FOR UPDATE) to ensure robust concurrency control on product stock levels during checkout.
 * **🖼️ Cloudinary Integration**: Automated image processing for user profiles and product catalogs.
 * **📧 Fail-Safe Messaging**: Integrated with **Mailgun**. The system uses a "best-effort" approach: an email failure will not block the completion of a successful order.
 * **🔍 Advanced Catalog**: Polymorphic search for parts by OEM code or compatibility.
@@ -60,8 +61,14 @@ backend/
 
 ### 2. Environment Configuration
 
-Create an `env.properties` file in the root folder (this file is ignored by Git for security):
+The application is pre-configured to work out-of-the-box with a local PostgreSQL instance. You can override defaults using Environment Variables:
 
+| Variable | Default Value | Description |
+| :--- | :--- | :--- |
+| `DB_URL` | `jdbc:postgresql://localhost:5432/ridfix_db` | Database connection string |
+| `DB_USER` | `postgres` | Your PostgreSQL username |
+| `DB_PASSWORD` | `Allahou99!` | Your PostgreSQL password |
+| `RIDFIX_JWT_SECRET` | *(Auto-generated default)* | 64-char secret for HS512 |
 ```properties
 PG_DB_NAME=ridfix_db
 PG_USERNAME=your_postgres_user
@@ -85,6 +92,7 @@ The API will be available at: `http://localhost:3001/api`
 ---
 
 ## 🧪 Testing & Validation
+To test the API, import the JSON file located in /postman into your Postman Desktop app. Ensure you run the 'Login' request first to populate the accessToken variable.
 
 A comprehensive **Postman Collection** is provided in the `/postman` directory. It includes:
 

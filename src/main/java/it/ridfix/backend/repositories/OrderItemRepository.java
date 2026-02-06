@@ -9,7 +9,10 @@ import java.util.UUID;
 
 public interface OrderItemRepository extends JpaRepository<OrderItem, UUID> {
 
-    java.util.List<OrderItem> findByOrderId(java.util.UUID orderId);
+    List<OrderItem> findByOrderId(UUID orderId);
+
+    // ✅ VERIFIED PURCHASE CHECK
+    boolean existsByOrderUserIdAndProductId(UUID userId, UUID productId);
 
     interface TopSellingRow {
         UUID getProductId();

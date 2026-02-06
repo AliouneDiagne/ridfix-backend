@@ -6,6 +6,7 @@ import it.ridfix.backend.entities.User;
 import it.ridfix.backend.entities.product.Product;
 import it.ridfix.backend.exceptions.ApiExceptions;
 import it.ridfix.backend.mappers.MapperUtils;
+import it.ridfix.backend.repositories.OrderItemRepository;
 import it.ridfix.backend.repositories.ProductRepository;
 import it.ridfix.backend.repositories.ReviewRepository;
 import it.ridfix.backend.repositories.UserRepository;
@@ -22,11 +23,16 @@ public class ReviewService {
     private final ReviewRepository reviews;
     private final ProductRepository products;
     private final UserRepository users;
+    private final OrderItemRepository orderItems;
 
-    public ReviewService(ReviewRepository reviews, ProductRepository products, UserRepository users) {
+    public ReviewService(ReviewRepository reviews,
+                         ProductRepository products,
+                         UserRepository users,
+                         OrderItemRepository orderItems) {
         this.reviews = reviews;
         this.products = products;
         this.users = users;
+        this.orderItems = orderItems;
     }
 
     @Transactional(readOnly = true)
@@ -39,6 +45,12 @@ public class ReviewService {
     @Transactional
     public ReviewDTOs.ReviewResponse addReview(UUID productId, ReviewDTOs.ReviewCreateRequest req) {
         UUID userId = SecurityUtils.currentUserId();
+
+        // ✅ Verified purchase check (opzionale, ma “da e-commerce vero”)
+        boolean hasPurchased = orderItems.existsByOrderUserIdAndProductId(userId, productId);
+        if (!hasPurchased) {
+            throw new ApiExceptions.BadRequest("You can only review products you have purchased.");
+        }
 
         if (reviews.findByUserIdAndProductId(userId, productId).isPresent()) {
             throw new ApiExceptions.Conflict("You already reviewed this product");

@@ -1,14 +1,20 @@
+# ==========================================
 # Java / Maven
+# ==========================================
 target/
+build/
 *.class
 *.jar
 *.war
-/nbbuild/
-/dist/
-/nbdist/
-build/
 
+# ==========================================
+# Maven Wrapper
+# ==========================================
+.mvn/wrapper/maven-wrapper.jar
+
+# ==========================================
 # IntelliJ IDEA
+# ==========================================
 .idea/
 *.iml
 *.iws
@@ -16,23 +22,40 @@ build/
 out/
 gen/
 
-# STS / Eclipse
+# ==========================================
+# Eclipse / STS
+# ==========================================
 .apt_generated
 .classpath
 .factorypath
 .project
-.settings
+.settings/
 .springBeans
 .sts4-cache
 
+# ==========================================
 # VS Code
+# ==========================================
 .vscode/
 
-# Maven Wrapper
-.mvn/wrapper/maven-wrapper.jar
+# ==========================================
+# OS files
+# ==========================================
+.DS_Store
+Thumbs.db
 
-# Config & Logs (SICUREZZA)
+# ==========================================
+# Logs
+# ==========================================
 *.log
+
+# ==========================================
+# Environment & Secrets (DO NOT COMMIT)
+# ==========================================
 .env
 env.properties
-HELP.md
+
+# Ignore all Spring profile configs
+application-*.properties
+# BUT keep the main one versioned
+!application.properties

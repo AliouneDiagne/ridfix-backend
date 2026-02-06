@@ -29,6 +29,14 @@ public class OrderController {
         return orders.myOrders();
     }
 
+    // OrderController.java
+    @GetMapping("/stats/top-selling")
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<OrderService.TopSelling> topSelling(
+            @RequestParam(defaultValue = "10") int limit) {
+        return orders.topSelling(limit);
+    }
+
     @GetMapping("/{id}")
     public OrderDTOs.OrderResponse get(@PathVariable UUID id) {
         return orders.getOrder(id);

@@ -1,13 +1,21 @@
 package it.ridfix.backend.services;
 
 import it.ridfix.backend.dto.OrderDTOs;
-import it.ridfix.backend.entities.*;
-import it.ridfix.backend.entities.enums.InventoryMovementType;
+import it.ridfix.backend.entities.Address;
+import it.ridfix.backend.entities.Order;
+import it.ridfix.backend.entities.OrderItem;
+import it.ridfix.backend.entities.Payment;
+import it.ridfix.backend.entities.User;
 import it.ridfix.backend.entities.enums.OrderStatus;
 import it.ridfix.backend.entities.product.Product;
 import it.ridfix.backend.exceptions.ApiExceptions;
 import it.ridfix.backend.mappers.MapperUtils;
-import it.ridfix.backend.repositories.*;
+import it.ridfix.backend.repositories.AddressRepository;
+import it.ridfix.backend.repositories.OrderItemRepository;
+import it.ridfix.backend.repositories.OrderRepository;
+import it.ridfix.backend.repositories.PaymentRepository;
+import it.ridfix.backend.repositories.ProductRepository;
+import it.ridfix.backend.repositories.UserRepository;
 import it.ridfix.backend.security.SecurityUtils;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -15,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -23,35 +32,36 @@ public class OrderService {
 
     private final OrderRepository orders;
     private final OrderItemRepository orderItems;
-    private final ProductRepository products;
+    private final ProductRepository products; // used in topSelling()
     private final AddressRepository addresses;
     private final UserRepository users;
-    private final InventoryMovementRepository movements;
     private final PaymentRepository payments;
     private final NotificationService notifications;
+    private final InventoryService inventory;
 
     public OrderService(OrderRepository orders,
                         OrderItemRepository orderItems,
                         ProductRepository products,
                         AddressRepository addresses,
                         UserRepository users,
-                        InventoryMovementRepository movements,
                         PaymentRepository payments,
-                        NotificationService notifications) {
+                        NotificationService notifications,
+                        InventoryService inventory) {
         this.orders = orders;
         this.orderItems = orderItems;
         this.products = products;
         this.addresses = addresses;
         this.users = users;
-        this.movements = movements;
         this.payments = payments;
         this.notifications = notifications;
+        this.inventory = inventory;
     }
 
     @Transactional
     public OrderDTOs.OrderResponse createOrder(OrderDTOs.CreateOrderRequest req) {
         UUID userId = SecurityUtils.currentUserId();
-        User user = users.findById(userId).orElseThrow(() -> new ApiExceptions.NotFound("User not found"));
+        User user = users.findById(userId)
+                .orElseThrow(() -> new ApiExceptions.NotFound("User not found"));
 
         Address ship = addresses.findByIdAndUserId(req.shippingAddressId(), userId)
                 .orElseThrow(() -> new ApiExceptions.NotFound("Shipping address not found"));
@@ -64,30 +74,14 @@ public class OrderService {
         BigDecimal subtotal = BigDecimal.ZERO;
         List<OrderItem> createdItems = new ArrayList<>();
 
-        for (OrderDTOs.OrderItemRequest item : req.items()) {
-            Product product = products.findForUpdate(item.productId())
-                    .orElseThrow(() -> new ApiExceptions.NotFound("Product not found: " + item.productId()));
+        // ✅ Sort by productId to acquire locks in a deterministic order (reduces deadlock risk)
+        List<OrderDTOs.OrderItemRequest> sortedItems = new ArrayList<>(req.items());
+        sortedItems.sort(Comparator.comparing(OrderDTOs.OrderItemRequest::productId));
 
-            if (!product.isActive()) {
-                throw new ApiExceptions.BadRequest("Product not available: " + product.getName());
-            }
-
+        for (OrderDTOs.OrderItemRequest item : sortedItems) {
             int qty = item.quantity();
-            if (qty <= 0) throw new ApiExceptions.BadRequest("Quantity must be >= 1");
 
-            if (product.getStockQty() < qty) {
-                throw new ApiExceptions.BadRequest("Not enough stock for " + product.getName());
-            }
-
-            product.setStockQty(product.getStockQty() - qty);
-
-            movements.save(new InventoryMovement(
-                    product,
-                    InventoryMovementType.OUT,
-                    qty,
-                    "Order created",
-                    order
-            ));
+            Product product = inventory.decrementStockForOrder(item.productId(), qty, order);
 
             OrderItem oi = new OrderItem(order, product, qty, product.getPrice());
             createdItems.add(oi);
@@ -104,7 +98,6 @@ public class OrderService {
 
         payments.save(new Payment(order, order.getTotal()));
 
-        // Fail-soft email
         notifications.orderCreated(user, order);
 
         return MapperUtils.orderToResponse(order, createdItems);
@@ -114,7 +107,12 @@ public class OrderService {
     public List<OrderDTOs.OrderResponse> myOrders() {
         UUID userId = SecurityUtils.currentUserId();
         List<Order> list = orders.findByUserIdOrderByCreatedAtDesc(userId);
-        return list.stream().map(o -> MapperUtils.orderToResponse(o, orderItems.findByOrderId(o.getId()))).toList();
+
+        List<OrderDTOs.OrderResponse> out = new ArrayList<>();
+        for (Order o : list) {
+            out.add(MapperUtils.orderToResponse(o, orderItems.findByOrderId(o.getId())));
+        }
+        return out;
     }
 
     @Transactional(readOnly = true)
@@ -134,12 +132,12 @@ public class OrderService {
         if (!SecurityUtils.isStaffOrAdmin()) {
             throw new ApiExceptions.Forbidden("Forbidden");
         }
-        Order o = orders.findById(orderId).orElseThrow(() -> new ApiExceptions.NotFound("Order not found"));
-        o.setStatus(status);
 
-        // notify user (fail-soft)
-        User u = o.getUser();
-        notifications.orderStatusChanged(u, o);
+        Order o = orders.findById(orderId)
+                .orElseThrow(() -> new ApiExceptions.NotFound("Order not found"));
+
+        o.setStatus(status);
+        notifications.orderStatusChanged(o.getUser(), o);
 
         return MapperUtils.orderToResponse(o, orderItems.findByOrderId(o.getId()));
     }
@@ -148,12 +146,13 @@ public class OrderService {
     public List<TopSelling> topSelling(int limit) {
         var rows = orderItems.findTopSelling(PageRequest.of(0, Math.max(1, Math.min(limit, 50))));
         List<TopSelling> out = new ArrayList<>();
+
         for (var r : rows) {
-            Product p = products.findById(r.getProductId()).orElse(null);
-            if (p != null) {
-                out.add(new TopSelling(p.getId(), p.getName(), r.getQty()));
-            }
+            products.findById(r.getProductId())
+                    .ifPresent(p -> out.add(new TopSelling(p.getId(), p.getName(), r.getQty())));
         }
+
+
         return out;
     }
 

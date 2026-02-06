@@ -52,73 +52,82 @@ public class DataSeeder implements CommandLineRunner {
         if (!users.existsByEmailIgnoreCase("admin@ridfix.local")) {
             User admin = new User("admin@ridfix.local", encoder.encode("Admin1234!"), "Admin", "Ridfix", Role.ADMIN);
             users.save(admin);
-            log.info("Seeded admin: admin@ridfix.local / Admin1234!");
+            log.info("Seeded admin: admin@ridfix.local");
         }
         if (!users.existsByEmailIgnoreCase("staff@ridfix.local")) {
             User staff = new User("staff@ridfix.local", encoder.encode("Staff1234!"), "Staff", "Ridfix", Role.STAFF);
             users.save(staff);
-            log.info("Seeded staff: staff@ridfix.local / Staff1234!");
         }
     }
 
     private void seedCatalog() {
         if (categories.count() == 0) {
-            categories.save(new Category("Screens"));
-            categories.save(new Category("Batteries"));
-            categories.save(new Category("Cases"));
-            log.info("Seeded categories");
+            // Nomi sincronizzati con CATEGORIES nel frontend
+            categories.save(new Category("Motore"));
+            categories.save(new Category("Carrozzeria"));
+            categories.save(new Category("Accessori"));
+            categories.save(new Category("Detersivi"));
+            categories.save(new Category("Utensili"));
+            categories.save(new Category("Elettrici"));
+            log.info("Seeded categories matching frontend");
         }
         if (brands.count() == 0) {
-            brands.save(new Brand("Apple"));
-            brands.save(new Brand("Samsung"));
-            brands.save(new Brand("Xiaomi"));
-            log.info("Seeded brands");
+            // Nomi sincronizzati con BRANDS nel frontend
+            brands.save(new Brand("Polini"));
+            brands.save(new Brand("Malossi"));
+            brands.save(new Brand("Piaggio"));
+            brands.save(new Brand("Yamaha"));
+            brands.save(new Brand("Aprilia"));
+            log.info("Seeded brands matching frontend");
         }
     }
 
     private void seedProducts() {
         if (products.count() > 0) return;
 
-        Category screens = categories.findByNameIgnoreCase("Screens").orElseGet(() -> categories.save(new Category("Screens")));
-        Category batteries = categories.findByNameIgnoreCase("Batteries").orElseGet(() -> categories.save(new Category("Batteries")));
-        Category cases = categories.findByNameIgnoreCase("Cases").orElseGet(() -> categories.save(new Category("Cases")));
+        Category motore = categories.findByNameIgnoreCase("Motore").orElseThrow();
+        Category carrozzeria = categories.findByNameIgnoreCase("Carrozzeria").orElseThrow();
+        Category accessori = categories.findByNameIgnoreCase("Accessori").orElseThrow();
 
-        Brand apple = brands.findByNameIgnoreCase("Apple").orElseGet(() -> brands.save(new Brand("Apple")));
-        Brand samsung = brands.findByNameIgnoreCase("Samsung").orElseGet(() -> brands.save(new Brand("Samsung")));
+        Brand malossi = brands.findByNameIgnoreCase("Malossi").orElseThrow();
+        Brand polini = brands.findByNameIgnoreCase("Polini").orElseThrow();
+        Brand piaggio = brands.findByNameIgnoreCase("Piaggio").orElseThrow();
+        Brand yamaha = brands.findByNameIgnoreCase("Yamaha").orElseThrow();
 
+        // Esempi SPARE PART (Ricambi)
         products.save(new SparePart(
-                "iPhone 13 Screen OEM",
-                "Original quality replacement screen for iPhone 13.",
-                BigDecimal.valueOf(129.90),
-                25,
-                screens,
-                apple,
-                "OEM-IP13-SCR",
-                "iPhone 13 / 13 Pro"
+                "Cilindro 70cc Malossi MHR",
+                "Cilindro ad alte prestazioni in alluminio per motori Piaggio.",
+                BigDecimal.valueOf(185.00),
+                10, motore, malossi,
+                "MAL-70-CIL", "Piaggio Zip SP / NRG"
         ));
 
         products.save(new SparePart(
-                "Galaxy S22 Battery",
-                "High quality replacement battery for Samsung Galaxy S22.",
-                BigDecimal.valueOf(49.90),
-                40,
-                batteries,
-                samsung,
-                "BAT-S22",
-                "Galaxy S22"
+                "Variatore Polini Hi-Speed",
+                "Kit variatore per migliorare l'accelerazione.",
+                BigDecimal.valueOf(65.00),
+                20, motore, polini,
+                "POL-VAR-66", "Yamaha Aerox / Booster"
         ));
 
+        products.save(new SparePart(
+                "Carena Anteriore Nera",
+                "Scudo anteriore di ricambio, colore nero opaco.",
+                BigDecimal.valueOf(45.50),
+                5, carrozzeria, piaggio,
+                "PIA-CAR-01", "Vespa Primavera / Sprint"
+        ));
+
+        // Esempi ACCESSORY (Accessori)
         products.save(new Accessory(
-                "Shockproof Case",
-                "Shockproof phone case with reinforced corners.",
-                BigDecimal.valueOf(19.90),
-                100,
-                cases,
-                apple,
-                "TPU",
-                "Black"
+                "Casco Integrale Yamaha Racing",
+                "Casco protettivo omologato con livrea ufficiale.",
+                BigDecimal.valueOf(129.00),
+                12, accessori, yamaha,
+                "Policarbonato", "Blu/Bianco"
         ));
 
-        log.info("Seeded sample products");
+        log.info("Products seeded and aligned with Ridfix frontend");
     }
 }

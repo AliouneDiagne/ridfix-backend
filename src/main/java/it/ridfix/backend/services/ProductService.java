@@ -23,7 +23,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class ProductService {
@@ -61,16 +67,43 @@ public class ProductService {
         Sort s = parseSort(sort);
         PageRequest pr = PageRequest.of(page, size, s);
 
-        Page<Product> result = products.findAll(ProductSpecifications.build(q, categoryId, brandId, minPrice, maxPrice, inStock, activeOnly), pr);
+        Page<Product> result = products.findAll(
+                ProductSpecifications.build(q, categoryId, brandId, minPrice, maxPrice, inStock, activeOnly),
+                pr
+        );
 
-        var mapped = result.getContent().stream().map(p -> {
-            ReviewRepository.RatingAggRow agg = reviews.ratingAgg(p.getId());
+        List<Product> pageProducts = result.getContent();
+
+        // ✅ Bulk query for rating aggregates (avoids N+1)
+        List<UUID> productIds = pageProducts.stream()
+                .map(Product::getId)
+                .toList();
+
+        Map<UUID, ReviewRepository.RatingAggBulkRow> aggByProductId =
+                productIds.isEmpty()
+                        ? Collections.emptyMap()
+                        : reviews.ratingAggBulk(productIds).stream()
+                        .collect(Collectors.toMap(
+                                ReviewRepository.RatingAggBulkRow::getProductId,
+                                Function.identity()
+                        ));
+
+        List<ProductDTOs.ProductResponse> mapped = pageProducts.stream().map(p -> {
+            ReviewRepository.RatingAggBulkRow agg = aggByProductId.get(p.getId());
+
             double avg = (agg != null && agg.getAvgRating() != null) ? agg.getAvgRating() : 0.0;
             long cnt = (agg != null && agg.getCount() != null) ? agg.getCount() : 0L;
+
             return MapperUtils.productToResponse(p, avg, cnt);
         }).toList();
 
-        return new CommonDTOs.PageResponse<>(mapped, result.getNumber(), result.getSize(), result.getTotalElements(), result.getTotalPages());
+        return new CommonDTOs.PageResponse<>(
+                mapped,
+                result.getNumber(),
+                result.getSize(),
+                result.getTotalElements(),
+                result.getTotalPages()
+        );
     }
 
     @Transactional(readOnly = true)
@@ -84,15 +117,39 @@ public class ProductService {
 
     @Transactional
     public ProductDTOs.ProductResponse create(ProductDTOs.ProductCreateRequest req) {
-        Category c = categories.findById(req.categoryId()).orElseThrow(() -> new ApiExceptions.NotFound("Category not found"));
-        Brand b = brands.findById(req.brandId()).orElseThrow(() -> new ApiExceptions.NotFound("Brand not found"));
+        Category c = categories.findById(req.categoryId())
+                .orElseThrow(() -> new ApiExceptions.NotFound("Category not found"));
+        Brand b = brands.findById(req.brandId())
+                .orElseThrow(() -> new ApiExceptions.NotFound("Brand not found"));
 
         Product p;
         String type = req.productType().toUpperCase();
+
         if (type.equals("SPARE_PART")) {
-            p = new SparePart(req.name(), req.description(), req.price(), req.stockQty(), c, b, req.oemCode(), req.compatibility());
+            if (req.oemCode() == null || req.oemCode().isBlank()) {
+                throw new ApiExceptions.BadRequest("Spare Parts must have an OEM Code");
+            }
+            p = new SparePart(
+                    req.name(),
+                    req.description(),
+                    req.price(),
+                    req.stockQty(),
+                    c,
+                    b,
+                    req.oemCode().trim(),
+                    req.compatibility()
+            );
         } else if (type.equals("ACCESSORY")) {
-            p = new Accessory(req.name(), req.description(), req.price(), req.stockQty(), c, b, req.material(), req.color());
+            p = new Accessory(
+                    req.name(),
+                    req.description(),
+                    req.price(),
+                    req.stockQty(),
+                    c,
+                    b,
+                    req.material(),
+                    req.color()
+            );
         } else {
             throw new ApiExceptions.BadRequest("Invalid productType: use SPARE_PART or ACCESSORY");
         }
@@ -112,19 +169,26 @@ public class ProductService {
         if (req.active() != null) p.setActive(req.active());
 
         if (req.categoryId() != null) {
-            Category c = categories.findById(req.categoryId()).orElseThrow(() -> new ApiExceptions.NotFound("Category not found"));
+            Category c = categories.findById(req.categoryId())
+                    .orElseThrow(() -> new ApiExceptions.NotFound("Category not found"));
             p.setCategory(c);
         }
         if (req.brandId() != null) {
-            Brand b = brands.findById(req.brandId()).orElseThrow(() -> new ApiExceptions.NotFound("Brand not found"));
+            Brand b = brands.findById(req.brandId())
+                    .orElseThrow(() -> new ApiExceptions.NotFound("Brand not found"));
             p.setBrand(b);
         }
 
-        // subtype updates
         if (p instanceof SparePart sp) {
-            if (req.oemCode() != null) sp.setOemCode(req.oemCode());
+            if (req.oemCode() != null) {
+                if (req.oemCode().isBlank()) {
+                    throw new ApiExceptions.BadRequest("Spare Parts must have an OEM Code");
+                }
+                sp.setOemCode(req.oemCode().trim());
+            }
             if (req.compatibility() != null) sp.setCompatibility(req.compatibility());
         }
+
         if (p instanceof Accessory ac) {
             if (req.material() != null) ac.setMaterial(req.material());
             if (req.color() != null) ac.setColor(req.color());
@@ -151,10 +215,11 @@ public class ProductService {
         if (sort == null || sort.isBlank()) {
             return Sort.by(Sort.Direction.DESC, "createdAt");
         }
-        // Example: "price,asc" or "name,desc"
         String[] parts = sort.split(",");
         String field = parts[0].trim();
-        Sort.Direction dir = (parts.length > 1 && parts[1].equalsIgnoreCase("asc")) ? Sort.Direction.ASC : Sort.Direction.DESC;
+        Sort.Direction dir = (parts.length > 1 && parts[1].equalsIgnoreCase("asc"))
+                ? Sort.Direction.ASC
+                : Sort.Direction.DESC;
 
         return switch (field) {
             case "price" -> Sort.by(dir, "price");
