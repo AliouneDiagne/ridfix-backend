@@ -1,10 +1,20 @@
 package it.ridfix.backend.external.mailgun;
 
-import it.ridfix.backend.exceptions.ApiExceptions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
+/**
+ * Optional email provider based on Mailgun.
+ * This service is enabled only when ridfix.mailgun.enabled=true.
+ * Any failure or misconfiguration will NOT block the application flow.
+ */
 @Service
+@ConditionalOnProperty(prefix = "ridfix.mailgun", name = "enabled", havingValue = "true")
 public class MailgunService {
+
+    private static final Logger log = LoggerFactory.getLogger(MailgunService.class);
 
     private final MailgunClient client;
     private final MailgunProperties props;
@@ -14,19 +24,38 @@ public class MailgunService {
         this.props = props;
     }
 
-    /**
-     * Sends an email. If Mailgun is disabled or misconfigured, throws a controlled exception
-     * (caller may choose to swallow it to make the system fail-soft).
-     */
     public void send(String to, String subject, String text) {
-        if (!props.enabled()) {
-            throw new ApiExceptions.ExternalService("Mailgun is disabled (set MAILGUN_ENABLED=true)");
+
+        if (!isConfigured()) {
+            log.warn(
+                    "Mailgun enabled but not fully configured (api-key/domain/from missing). Email skipped."
+            );
+            return;
         }
-        if (isBlank(props.apiKey()) || isBlank(props.domain()) || isBlank(props.from())) {
-            throw new ApiExceptions.ExternalService("Mailgun is not configured (set MAILGUN_API_KEY/DOMAIN/FROM)");
+
+        try {
+            client.sendMessage(
+                    props.domain(),
+                    props.from(),
+                    to,
+                    subject,
+                    text
+            );
+        } catch (Exception ex) {
+            log.warn(
+                    "Mailgun send failed. Email skipped. Cause: {}",
+                    ex.getMessage()
+            );
         }
-        client.sendMessage(props.domain(), props.from(), to, subject, text);
     }
 
-    private static boolean isBlank(String s) { return s == null || s.isBlank(); }
+    private boolean isConfigured() {
+        return !isBlank(props.domain())
+                && !isBlank(props.from())
+                && !isBlank(props.apiKey());
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
 }

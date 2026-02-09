@@ -30,25 +30,22 @@ public class UserController {
 
     @PatchMapping("/me")
     public UserDTOs.UserResponse updateMe(@Valid @RequestBody UserDTOs.UpdateUserRequest req) {
-        // PATCH corretto solo se il service gestisce campi null vs assenti
         return users.updateMe(req);
     }
 
     /**
-     * ✅ ENDPOINT RICHIESTO DAL PDF
-     * PATCH /users/me/image
+     * ✅ ENDPOINT RICHIESTO
+     * PATCH /api/users/me/image
+     *
+     * Postman: Body -> form-data -> key = "file" (type File)
      */
-    @PatchMapping(value = "/me/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public UserDTOs.UserResponse updateProfileImage(@RequestPart("file") MultipartFile file) {
-        validateImage(file);
-        return users.uploadProfileImage(file);
-    }
-
-    /**
-     * (Opzionale) mantenuto per backward compatibility
-     */
-    @PostMapping(value = "/me/profile-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public UserDTOs.UserResponse uploadProfileImage(@RequestPart("file") MultipartFile file) {
+    @PatchMapping(
+            value = "/me/image",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    public UserDTOs.UserResponse uploadProfileImage(
+            @RequestPart("file") MultipartFile file
+    ) {
         validateImage(file);
         return users.uploadProfileImage(file);
     }

@@ -37,7 +37,9 @@ public class JwtService {
     @PostConstruct
     void init() {
         if (secret == null || secret.length() < 32) {
-            throw new IllegalStateException("RIDFIX_JWT_SECRET is missing or too short (min 32 chars).");
+            throw new IllegalStateException(
+                    "RIDFIX_JWT_SECRET is missing or too short (min 32 chars)."
+            );
         }
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
@@ -46,12 +48,17 @@ public class JwtService {
         Instant now = Instant.now(clock);
         Instant exp = now.plusSeconds(expirationMinutes * 60);
 
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .issuer(issuer)
                 .subject(subject)
-                .claims(extraClaims)
                 .issuedAt(Date.from(now))
-                .expiration(Date.from(exp))
+                .expiration(Date.from(exp));
+
+        if (extraClaims != null && !extraClaims.isEmpty()) {
+            builder.addClaims(extraClaims);
+        }
+
+        return builder
                 .signWith(key)
                 .compact();
     }

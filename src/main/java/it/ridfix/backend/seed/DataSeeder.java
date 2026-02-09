@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 
@@ -42,48 +43,60 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     @Override
+    @Transactional
     public void run(String... args) {
         seedUsers();
         seedCatalog();
         seedProducts();
+        log.info("✅ DataSeeder completed");
     }
 
     private void seedUsers() {
-        if (!users.existsByEmailIgnoreCase("admin@ridfix.local")) {
-            User admin = new User("admin@ridfix.local", encoder.encode("Admin1234!"), "Admin", "Ridfix", Role.ADMIN);
-            users.save(admin);
-            log.info("Seeded admin: admin@ridfix.local");
-        }
-        if (!users.existsByEmailIgnoreCase("staff@ridfix.local")) {
-            User staff = new User("staff@ridfix.local", encoder.encode("Staff1234!"), "Staff", "Ridfix", Role.STAFF);
-            users.save(staff);
+        seedUserIfMissing("admin@ridfix.local", "Admin1234!", "Admin", "Ridfix", Role.ADMIN);
+        seedUserIfMissing("staff@ridfix.local", "Staff1234!", "Staff", "Ridfix", Role.STAFF);
+        seedUserIfMissing("customer@ridfix.local", "Customer1234!", "Mario", "Rossi", Role.CUSTOMER);
+    }
+
+    private void seedUserIfMissing(String email, String rawPassword, String name, String surname, Role role) {
+        if (!users.existsByEmailIgnoreCase(email)) {
+            User u = new User(email, encoder.encode(rawPassword), name, surname, role);
+            users.save(u);
+            log.info("Seeded {}: {}", role, email);
+        } else {
+            log.info("User already exists: {}", email);
         }
     }
 
     private void seedCatalog() {
         if (categories.count() == 0) {
-            // Nomi sincronizzati con CATEGORIES nel frontend
             categories.save(new Category("Motore"));
             categories.save(new Category("Carrozzeria"));
             categories.save(new Category("Accessori"));
             categories.save(new Category("Detersivi"));
             categories.save(new Category("Utensili"));
             categories.save(new Category("Elettrici"));
-            log.info("Seeded categories matching frontend");
+            log.info("Seeded categories");
+        } else {
+            log.info("Categories already present (count={})", categories.count());
         }
+
         if (brands.count() == 0) {
-            // Nomi sincronizzati con BRANDS nel frontend
             brands.save(new Brand("Polini"));
             brands.save(new Brand("Malossi"));
             brands.save(new Brand("Piaggio"));
             brands.save(new Brand("Yamaha"));
             brands.save(new Brand("Aprilia"));
-            log.info("Seeded brands matching frontend");
+            log.info("Seeded brands");
+        } else {
+            log.info("Brands already present (count={})", brands.count());
         }
     }
 
     private void seedProducts() {
-        if (products.count() > 0) return;
+        if (products.count() > 0) {
+            log.info("Products already present (count={}), skipping seedProducts()", products.count());
+            return;
+        }
 
         Category motore = categories.findByNameIgnoreCase("Motore").orElseThrow();
         Category carrozzeria = categories.findByNameIgnoreCase("Carrozzeria").orElseThrow();
@@ -94,7 +107,6 @@ public class DataSeeder implements CommandLineRunner {
         Brand piaggio = brands.findByNameIgnoreCase("Piaggio").orElseThrow();
         Brand yamaha = brands.findByNameIgnoreCase("Yamaha").orElseThrow();
 
-        // Esempi SPARE PART (Ricambi)
         products.save(new SparePart(
                 "Cilindro 70cc Malossi MHR",
                 "Cilindro ad alte prestazioni in alluminio per motori Piaggio.",
@@ -119,7 +131,6 @@ public class DataSeeder implements CommandLineRunner {
                 "PIA-CAR-01", "Vespa Primavera / Sprint"
         ));
 
-        // Esempi ACCESSORY (Accessori)
         products.save(new Accessory(
                 "Casco Integrale Yamaha Racing",
                 "Casco protettivo omologato con livrea ufficiale.",
@@ -128,6 +139,6 @@ public class DataSeeder implements CommandLineRunner {
                 "Policarbonato", "Blu/Bianco"
         ));
 
-        log.info("Products seeded and aligned with Ridfix frontend");
+        log.info("Seeded products");
     }
 }

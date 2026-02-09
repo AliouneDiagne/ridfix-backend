@@ -1,103 +1,249 @@
+# 🛵 Ridfix Backend – Scooter Spare Parts E-Commerce API
+
+**Ridfix Backend** is a REST API developed with **Spring Boot** for managing an e-commerce platform focused on **scooter spare parts and accessories**.
+
+The project is designed to demonstrate:
+
+* secure API design
+* structured domain modeling
+* transactional business logic
+* role-based access control
+* integration with external services
+
+It is intended as a **backend-only application**, consumable by any frontend or API client.
 
 ---
 
-# 🛵 Ridfix Backend: E-commerce Engine
+## 🛠️ Tech Stack
 
-**Ridfix** is a professional RESTful API developed for a specialized scooter spare parts e-commerce. It features a robust architecture designed to handle complex inventories, secure transactions, and seamless cloud integrations.
+* **Java 21**
+* **Spring Boot 3.4.2**
+* **Spring Security** (JWT, RBAC)
+* **Spring Data JPA / Hibernate**
+* **PostgreSQL**
+* **Maven**
 
 ---
 
-## 🛠️ Architecture & Tech Stack
+## 🏗️ Architecture
 
-### 💾 Core Technologies
+### 🔐 Security
 
-* **Java 21 & Spring Boot 3.4.2**: For a reactive and modern backend.
-* **PostgreSQL**: Relational database for structured data integrity.
-* **Hibernate/JPA**: Implementing a **12-table schema** with advanced inheritance.
+* **Stateless JWT authentication**
+* **RBAC (Role-Based Access Control)** with three roles:
 
-### 🏛️ Design Patterns
+  * `CUSTOMER`
+  * `STAFF`
+  * `ADMIN`
+* Endpoint protection via `@PreAuthorize`
+* Stateless `SecurityFilterChain`
+* **CORS configurable via `application.properties`** (not hardcoded)
 
-* **DTO Pattern**: Full separation between Database Entities and API Responses for maximum security.
-* **RBAC (Role-Based Access Control)**: 3 levels of security (`CUSTOMER`, `STAFF`, `ADMIN`). 
+### 🧱 Domain Model
 
+The domain is modeled using multiple related entities:
 
-* **Inheritance Strategy**: Used JOINED inheritance strategy for the Product entity. This ensures a normalized database schema where SparePart and Accessory specific attributes are stored in separate tables, ensuring data integrity while maintaining a unified catalog interface.
+* User
+* Address
+* Product *(abstract)*
+
+  * SparePart
+  * Accessory
+* Category
+* Brand
+* Order
+* OrderItem
+* Payment
+* Review
+* InventoryMovement
+
+Relationships are explicitly modeled to reflect real e-commerce constraints.
+
+### 🧬 Inheritance Strategy
+
+The product catalog uses **JPA JOINED inheritance**:
+
+* `products` table for shared fields
+* `spare_parts` and `accessories` tables for subtype-specific attributes
+
+This strategy was chosen to preserve **normalization and clear subtype boundaries**, at the cost of additional joins.
+
+### 🔄 Transactions & Concurrency
+
+* Checkout logic handled with `@Transactional`
+* Atomic stock reduction
+* **Pessimistic locking** on products during order creation (`SELECT FOR UPDATE`)
+* **Optimistic locking** via `@Version` on the Product entity
+
 ---
 
-## 📂 Project Directory Structure
+## 📂 Project Structure
 
-```text
+```
 backend/
-├── env.properties                 # Local secrets & API keys
-├── pom.xml                        # Maven dependencies & build config
-├── postman/                       # JSON Collections for API testing
+├── pom.xml
+├── README.md
+├── postman/
+│   ├── Ridfix_Backend.postman_collection.json
+│   └── Ridfix_Env_Local.json
 └── src/main/java/it/ridfix/backend/
-    ├── entities/                  # 10-table Relational Schema
-    ├── repositories/              # Spring Data JPA Interfaces
-    ├── services/                  # Business logic & External Adapters
-    ├── controllers/               # REST Endpoints (/api/v1)
-    ├── security/                  # JWT Filtering & Security Config
-    └── exceptions/                # Global Exception Handling Logic
-
+    ├── config/        # Security, Beans, CORS
+    ├── controllers/  # REST endpoints (/api/**)
+    ├── dto/          # Request / Response DTOs
+    ├── entities/     # JPA entities
+    ├── repositories/# Spring Data JPA
+    ├── services/     # Business logic
+    ├── security/     # JWT, UserDetails, filters
+    ├── external/     # Cloudinary, Mailgun
+    ├── seed/         # DataSeeder (dev only)
+    └── exceptions/   # Global exception handling
 ```
 
 ---
 
-## 🚀 Key Business Features
+## 🚀 Main Features
 
-* **🛒 Transactional Checkout**: Uses @Transactional and **Pessimistic Locking** (SELECT FOR UPDATE) to ensure robust concurrency control on product stock levels during checkout.
-* **🖼️ Cloudinary Integration**: Automated image processing for user profiles and product catalogs.
-* **📧 Fail-Safe Messaging**: Integrated with **Mailgun**. The system uses a "best-effort" approach: an email failure will not block the completion of a successful order.
-* **🔍 Advanced Catalog**: Polymorphic search for parts by OEM code or compatibility.
+### 👤 Authentication & Users
+
+* User registration and login with JWT
+* Profile retrieval (`/auth/me`, `/users/me`)
+* User data update
+* Profile image upload (multipart)
+
+### 🏠 Addresses
+
+* Shipping and billing address management
+* `User → Addresses` relationship
+* Default address support
+
+### 📦 Catalog
+
+* Category and brand CRUD (**ADMIN only**)
+* Product CRUD (**ADMIN only**)
+* Search with filters:
+
+  * text
+  * category
+  * brand
+  * price range
+  * availability
+* Pagination and sorting
+
+### 🛒 Orders
+
+* Transactional order creation
+* Address snapshot stored on the order
+* Stock handling with inventory movements
+* Order lifecycle (`CREATED`, `PAID`, `SHIPPED`, `DELIVERED`, `CANCELLED`)
+* User order history
+* Order status updates (**STAFF / ADMIN**)
+
+### ⭐ Reviews
+
+* One review per user per product
+* **Verified Purchase enforcement** (only buyers can review)
+* Rating aggregation (average and count)
+
+### 📊 Admin Statistics
+
+* Aggregation endpoints:
+
+  * Top-selling products (JPQL `GROUP BY` + `SUM`)
 
 ---
 
-## ⚙️ Installation & Local Setup
+## ☁️ External Services
 
-### 1. Prerequisites
+### Cloudinary
 
-* JDK 21
-* PostgreSQL 15+
+* Product and profile image uploads
+* Configurable via environment variables
+* File type and size validation
 
-### 2. Environment Configuration
+### Mailgun
 
-The application is pre-configured to work out-of-the-box with a local PostgreSQL instance. You can override defaults using Environment Variables:
+* Optional integration
+* Disabled by default
+* **Fail-soft behavior**: email errors do not block order creation
 
-| Variable | Default Value | Description |
-| :--- | :--- | :--- |
-| `DB_URL` | `jdbc:postgresql://localhost:5432/ridfix_db` | Database connection string |
-| `DB_USER` | `postgres` | Your PostgreSQL username |
-| `DB_PASSWORD` | `Allahou99!` | Your PostgreSQL password |
-| `RIDFIX_JWT_SECRET` | *(Auto-generated default)* | 64-char secret for HS512 |
-```properties
-PG_DB_NAME=ridfix_db
-PG_USERNAME=your_postgres_user
-PG_PASSWORD=your_postgres_password
-JWT_SECRET=your_secret_key_64_chars_long
-CLOUDINARY_URL=cloudinary://key:secret@name
-MAILGUN_API_KEY=your_mailgun_api_key
+---
 
+## ⚙️ Configuration
+
+### Environment Variables
+
+| Variable              | Description                      |
+| --------------------- | -------------------------------- |
+| `DB_URL`              | PostgreSQL JDBC URL              |
+| `DB_USER`             | Database username                |
+| `DB_PASSWORD`         | Database password                |
+| `RIDFIX_JWT_SECRET`   | JWT secret (required)            |
+| `RIDFIX_CORS_ORIGINS` | Allowed CORS origins             |
+| `CLOUDINARY_*`        | Cloudinary credentials           |
+| `MAILGUN_*`           | Mailgun configuration (optional) |
+
+---
+
+## ▶️ Run the Application
+
+### Windows
+
+```powershell
+.\mvnw clean spring-boot:run
 ```
 
-### 3. Launching the Server
+### Linux / macOS
 
 ```bash
-# Using the Maven Wrapper
 ./mvnw clean spring-boot:run
-
 ```
 
-The API will be available at: `http://localhost:3001/api`
+API available at:
+**[http://localhost:3001/api](http://localhost:3001/api)**
 
 ---
 
-## 🧪 Testing & Validation
-To test the API, import the JSON file located in /postman into your Postman Desktop app. Ensure you run the 'Login' request first to populate the accessToken variable.
+## 👥 Seeded Users (DEV ONLY)
 
-A comprehensive **Postman Collection** is provided in the `/postman` directory. It includes:
+The following users are automatically created **only in development mode** by the `DataSeeder`:
 
-* Pre-configured environments.
-* Authentication flows (Login -> Token extraction).
-* Test cases for Admin-only routes.
+| Role     | Email                                                 | Password      |
+| -------- | ----------------------------------------------------- | ------------- |
+| ADMIN    | [admin@ridfix.local](mailto:admin@ridfix.local)       | Admin1234!    |
+| STAFF    | [staff@ridfix.local](mailto:staff@ridfix.local)       | Staff1234!    |
+| CUSTOMER | [customer@ridfix.local](mailto:customer@ridfix.local) | Customer1234! |
+
+*(For development and testing purposes only)*
 
 ---
+
+## 🧪 API Testing (Postman)
+
+The repository includes a complete **Postman Collection and Environment**:
+
+```
+/postman/Ridfix_Backend.postman_collection.json
+/postman/Ridfix_Env_Local.json
+```
+
+### How to run tests
+
+1. Import both files into Postman.
+2. Select the **Local** environment.
+3. Run login requests to generate JWT tokens:
+
+  * ADMIN → `tokenAdmin`
+  * CUSTOMER → `tokenCustomer`
+  * STAFF → `tokenStaff`
+4. Execute requests by role-based folders.
+
+⚠️ Tokens are intentionally **not included** in the environment for security and reproducibility.
+
+---
+
+## ✅ Project Status
+
+* ✔ Clean and coherent domain model
+* ✔ No hardcoded secrets in the repository
+* ✔ Secure, stateless authentication
+* ✔ Transactional and concurrency-safe business logic

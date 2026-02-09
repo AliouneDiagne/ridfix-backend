@@ -68,16 +68,20 @@ public class UserService {
                 .orElseThrow(() -> new ApiExceptions.NotFound("User not found"));
 
         if (req.isDefault()) {
-            // unset other defaults for the same type
-            List<Address> existing = addresses.findByUserIdOrderByTypeAsc(u.getId());
-            for (Address a : existing) {
-                if (a.getType() == req.type() && a.isDefault()) {
-                    a.setDefault(false);
-                }
-            }
+            // ✅ Atomico e veloce: un colpo solo sul DB
+            addresses.resetDefaultsForUserAndType(u.getId(), req.type());
         }
 
-        Address a = new Address(u, req.type(), req.street(), req.city(), req.postalCode(), req.country(), req.isDefault());
+        Address a = new Address(
+                u,
+                req.type(),
+                req.street(),
+                req.city(),
+                req.postalCode(),
+                req.country(),
+                req.isDefault()
+        );
+
         addresses.save(a);
         return MapperUtils.addressToResponse(a);
     }

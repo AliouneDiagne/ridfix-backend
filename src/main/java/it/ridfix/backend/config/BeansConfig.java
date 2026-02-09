@@ -1,12 +1,12 @@
 package it.ridfix.backend.config;
 
 import it.ridfix.backend.external.mailgun.MailgunProperties;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
-import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -29,11 +29,19 @@ public class BeansConfig {
     }
 
     /**
-     * Mailgun RestClient (Basic Auth). If Mailgun is disabled or not configured, callers should avoid using it.
+     * Mailgun RestClient (Basic Auth) - creato solo se ridfix.mailgun.enabled=true
      */
     @Bean
+    @ConditionalOnProperty(prefix = "ridfix.mailgun", name = "enabled", havingValue = "true")
     public RestClient mailgunRestClient(MailgunProperties props) {
-        String authHeader = "Basic " + Base64.getEncoder().encodeToString(("api:" + nullToEmpty(props.apiKey())).getBytes());
+
+        if (isBlank(props.apiKey())) {
+            throw new IllegalStateException("Mailgun enabled but API key is missing (ridfix.mailgun.api-key)");
+        }
+
+        String authHeader = "Basic " + Base64.getEncoder()
+                .encodeToString(("api:" + props.apiKey()).getBytes());
+
         return RestClient.builder()
                 .baseUrl("https://api.mailgun.net")
                 .defaultHeader(HttpHeaders.AUTHORIZATION, authHeader)
@@ -41,7 +49,7 @@ public class BeansConfig {
                 .build();
     }
 
-    private static String nullToEmpty(String s) {
-        return (s == null) ? "" : s;
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
     }
 }

@@ -37,6 +37,11 @@ public class ReviewService {
 
     @Transactional(readOnly = true)
     public List<ReviewDTOs.ReviewResponse> listByProduct(UUID productId) {
+        // 404 se il prodotto non esiste (evita liste “fantasma”)
+        if (!products.existsById(productId)) {
+            throw new ApiExceptions.NotFound("Product not found");
+        }
+
         return reviews.findByProductIdOrderByCreatedAtDesc(productId).stream()
                 .map(MapperUtils::reviewToResponse)
                 .toList();
@@ -46,21 +51,28 @@ public class ReviewService {
     public ReviewDTOs.ReviewResponse addReview(UUID productId, ReviewDTOs.ReviewCreateRequest req) {
         UUID userId = SecurityUtils.currentUserId();
 
-        // ✅ Verified purchase check (opzionale, ma “da e-commerce vero”)
+        // 1️⃣ prodotto deve esistere (404 pulito)
+        Product p = products.findById(productId)
+                .orElseThrow(() -> new ApiExceptions.NotFound("Product not found"));
+
+        // 2️⃣ review duplicata → 409 (PRIMA di tutto)
+        if (reviews.findByUserIdAndProductId(userId, productId).isPresent()) {
+            throw new ApiExceptions.Conflict("You already reviewed this product");
+        }
+
+        // 3️⃣ acquisto verificato → 400
         boolean hasPurchased = orderItems.existsByOrderUserIdAndProductId(userId, productId);
         if (!hasPurchased) {
             throw new ApiExceptions.BadRequest("You can only review products you have purchased.");
         }
 
-        if (reviews.findByUserIdAndProductId(userId, productId).isPresent()) {
-            throw new ApiExceptions.Conflict("You already reviewed this product");
-        }
-
-        User u = users.findById(userId).orElseThrow(() -> new ApiExceptions.NotFound("User not found"));
-        Product p = products.findById(productId).orElseThrow(() -> new ApiExceptions.NotFound("Product not found"));
+        // 4️⃣ user (difensivo)
+        User u = users.findById(userId)
+                .orElseThrow(() -> new ApiExceptions.NotFound("User not found"));
 
         Review r = new Review(u, p, req.rating(), req.comment());
         reviews.save(r);
+
         return MapperUtils.reviewToResponse(r);
     }
 }

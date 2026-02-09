@@ -52,6 +52,13 @@
 			<artifactId>spring-boot-starter-security</artifactId>
 		</dependency>
 
+		<!-- ✅ Configuration metadata (fix "Unused property" warnings in IDE) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-configuration-processor</artifactId>
+			<optional>true</optional>
+		</dependency>
+
 		<!-- JWT (JJWT) -->
 		<dependency>
 			<groupId>io.jsonwebtoken</groupId>
@@ -71,7 +78,7 @@
 			<scope>runtime</scope>
 		</dependency>
 
-		<!-- Cloudinary (FIX per il tuo errore) -->
+		<!-- Cloudinary -->
 		<dependency>
 			<groupId>com.cloudinary</groupId>
 			<artifactId>cloudinary-http44</artifactId>

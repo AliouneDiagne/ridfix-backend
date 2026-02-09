@@ -1,5 +1,6 @@
 package it.ridfix.backend.services;
 
+import it.ridfix.backend.dto.CommonDTOs;
 import it.ridfix.backend.dto.OrderDTOs;
 import it.ridfix.backend.entities.Address;
 import it.ridfix.backend.entities.Order;
@@ -17,7 +18,9 @@ import it.ridfix.backend.repositories.PaymentRepository;
 import it.ridfix.backend.repositories.ProductRepository;
 import it.ridfix.backend.repositories.UserRepository;
 import it.ridfix.backend.security.SecurityUtils;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -74,13 +77,12 @@ public class OrderService {
         BigDecimal subtotal = BigDecimal.ZERO;
         List<OrderItem> createdItems = new ArrayList<>();
 
-        // ✅ Sort by productId to acquire locks in a deterministic order (reduces deadlock risk)
+        // ✅ deterministic lock order
         List<OrderDTOs.OrderItemRequest> sortedItems = new ArrayList<>(req.items());
         sortedItems.sort(Comparator.comparing(OrderDTOs.OrderItemRequest::productId));
 
         for (OrderDTOs.OrderItemRequest item : sortedItems) {
             int qty = item.quantity();
-
             Product product = inventory.decrementStockForOrder(item.productId(), qty, order);
 
             OrderItem oi = new OrderItem(order, product, qty, product.getPrice());
@@ -113,6 +115,38 @@ public class OrderService {
             out.add(MapperUtils.orderToResponse(o, orderItems.findByOrderId(o.getId())));
         }
         return out;
+    }
+
+    // ✅ NUOVO: lista globale paginata (solo STAFF/ADMIN)
+    @Transactional(readOnly = true)
+    public CommonDTOs.PageResponse<OrderDTOs.OrderResponse> listAllOrders(int page, int size) {
+        if (!SecurityUtils.isStaffOrAdmin()) {
+            throw new ApiExceptions.Forbidden("Forbidden");
+        }
+
+        int safePage = Math.max(0, page);
+        int safeSize = Math.max(1, Math.min(size, 50));
+
+        PageRequest pr = PageRequest.of(
+                safePage,
+                safeSize,
+                Sort.by(Sort.Direction.DESC, "createdAt")
+        );
+
+        Page<Order> p = orders.findAll(pr);
+
+        List<OrderDTOs.OrderResponse> content = new ArrayList<>();
+        for (Order o : p.getContent()) {
+            content.add(MapperUtils.orderToResponse(o, orderItems.findByOrderId(o.getId())));
+        }
+
+        return new CommonDTOs.PageResponse<>(
+                content,
+                p.getNumber(),
+                p.getSize(),
+                p.getTotalElements(),
+                p.getTotalPages()
+        );
     }
 
     @Transactional(readOnly = true)
@@ -151,7 +185,6 @@ public class OrderService {
             products.findById(r.getProductId())
                     .ifPresent(p -> out.add(new TopSelling(p.getId(), p.getName(), r.getQty())));
         }
-
 
         return out;
     }
